@@ -9,29 +9,28 @@ import { useRoom } from '../context/RoomContext';
 export default function CreateLobby() {
   const nav = useNavigation<any>();
   const {
-    createRoom, joinRoom,
-    setUsername, setUserPhoto,
-    setCategory, setTimeLimit, setTotalRounds, setCurrentRound,
-    category, timeLimit, totalRounds
+    createRoom,
+    joinRoom,
+    setUsername,
+    setUserPhoto
   } = useRoom();
 
   const [rounds, setRounds] = useState('4');
   const [time,   setTime]   = useState('30');
-  const [cat,    setCat]    = useState(category);
+  const [cat,    setCat]    = useState('Family friendly');
 
   const handleCreate = async () => {
     if (!rounds.trim() || !time.trim()) {
       return Alert.alert('Debes poner número de rondas y tiempo');
     }
-    setCategory(cat);
-    setTimeLimit(Number(time));
-    setTotalRounds(Number(rounds));
-    setCurrentRound(1);
+    const tot = Number(rounds);
+    const lim = Number(time);
+    // Crea sala con ESOS valores
+    await createRoom({ totalRounds: tot, timeLimit: lim, category: cat });
 
+    // Ahora soy host
     setUsername('Anfitrión');
     setUserPhoto('');
-
-    await createRoom();
     await joinRoom();
 
     nav.navigate('HostLobby');
@@ -73,13 +72,13 @@ export default function CreateLobby() {
 
       <View style={styles.actions}>
         <TouchableOpacity
-          style={[styles.button,{ backgroundColor:'#009DFF'}]}
-          onPress={()=>nav.goBack()}
+          style={[styles.button, { backgroundColor: '#009DFF' }]}
+          onPress={() => nav.goBack()}
         >
           <Text style={styles.buttonText}>Atrás</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.button,{ backgroundColor:'#FF00C8'}]}
+          style={[styles.button, { backgroundColor: '#FF00C8' }]}
           onPress={handleCreate}
         >
           <Text style={styles.buttonText}>Crear</Text>

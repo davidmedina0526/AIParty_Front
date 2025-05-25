@@ -1,10 +1,8 @@
-// app/context/RoomContext.tsx
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
-  db, storage,
+  db,
   dbRef, set, onValue, get,
-  storageRef, uploadBytes, getDownloadURL
+  storage, storageRef, uploadBytes, getDownloadURL
 } from '../services/firebase';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -31,15 +29,21 @@ export interface RoomContextData {
   challenge: string;
   currentRound: number;
   setCurrentRound: React.Dispatch<React.SetStateAction<number>>;
+
+  /** Ya no lees estos de estado antes de createRoom */
   totalRounds: number;
   timeLimit: number;
   category: string;
   setCategory: (c: string) => void;
-  setTimeLimit: (t: number) => void;
-  setTotalRounds: (r: number) => void;
 
-  createRoom: () => Promise<void>;
-  joinRoom:   () => Promise<void>;
+  /** Ahora createRoom recibe el config */
+  createRoom: (opts: {
+    totalRounds: number;
+    timeLimit: number;
+    category: string;
+  }) => Promise<void>;
+
+  joinRoom: () => Promise<void>;
   joinRoomWithInfo: (
     roomCode: string,
     uId: string,
@@ -48,33 +52,29 @@ export interface RoomContextData {
   ) => Promise<void>;
   startRound: () => Promise<void>;
   submitPhoto: (base64: string) => Promise<void>;
-  submitVote:  (targetUserId: string) => Promise<void>;
+  submitVote: (targetUserId: string) => Promise<void>;
 }
 
 const RoomContext = createContext<RoomContextData>({} as any);
 
 const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
-  const [roomId, setRoomId] = useState('');
-  const [userId, setUserId] = useState(() => uuidv4());
-  const [username, setUsername]   = useState('');
-  const [userPhoto, setUserPhoto] = useState('');
-  const [players, setPlayers]     = useState<Player[]>([]);
-  const [photos, setPhotos]       = useState<Photo[]>([]);
-  const [votes, setVotes]         = useState<Record<string,Vote>>({});
-  const [scores, setScores]       = useState<Score[]>([]);
-  const [challenge, setChallenge] = useState('');
+  const [roomId, setRoomId]         = useState('');
+  const [userId, setUserId]         = useState(() => uuidv4());
+  const [username, setUsername]     = useState('');
+  const [userPhoto, setUserPhoto]   = useState('');
+  const [players, setPlayers]       = useState<Player[]>([]);
+  const [photos, setPhotos]         = useState<Photo[]>([]);
+  const [votes, setVotes]           = useState<Record<string,Vote>>({});
+  const [scores, setScores]         = useState<Score[]>([]);
+  const [challenge, setChallenge]   = useState('');
   const [currentRound, setCurrentRound] = useState(1);
-  const [totalRounds, setTotalRounds]   = useState(4);
-  const [timeLimit, setTimeLimit]       = useState(30);
-  const [category, setCategory]         = useState('Family friendly');
 
-  const STATIC: Record<string,string[]> = {
-    'Family friendly': ['Selfie con tu bebida favorita','Foto de un abrazo de grupo','Captura a alguien bailando'],
-    'Plan tranqui':     ['Foto relajada en el sofá','Toma una foto con mascota','Captura un libro que estés leyendo'],
-    'Al siguiente nivel':['Foto haciendo acrobacia suave','Captura un salto al aire','Recrea una escena de película'],
-    'Pongámonos picantes...':['Selfie con gesto coqueto','Foto con algún accesorio rojo','Captura mirada intensa']
-  };
+  // Estos ahora solo sirven de lectura, pero siempre los pasarás a createRoom
+  const [totalRounds, _setTotalRounds] = useState(4);
+  const [timeLimit, _setTimeLimit]     = useState(30);
+  const [category, _setCategory]       = useState('Family friendly');
 
+  // ESTO NO CAMBIA: listeners de Firebase
   useEffect(() => {
     if (!roomId) return;
     const pRef  = dbRef(db, `rooms/${roomId}/players`);
@@ -84,33 +84,56 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
     const cRef  = dbRef(db, `rooms/${roomId}/challenge`);
     const rRef  = dbRef(db, `rooms/${roomId}/round`);
 
-    onValue(pRef, snap => setPlayers(snap.val() ? Object.values(snap.val()) : []));
-    onValue(phRef,snap => setPhotos  (snap.val() ? Object.values(snap.val()) : []));
-    onValue(vRef, snap => setVotes   (snap.val() || {}));
-    onValue(sRef, snap => {
+    onValue(pRef,  snap => setPlayers(snap.val() ? Object.values(snap.val()) : []));
+    onValue(phRef, snap => setPhotos  (snap.val() ? Object.values(snap.val()) : []));
+    onValue(vRef,  snap => setVotes   (snap.val() || {}));
+    onValue(sRef,  snap => {
       const data = snap.val() || {};
       setScores(Object.values(data));
     });
-    onValue(cRef, snap => setChallenge(snap.val() || ''));
-    onValue(rRef, snap => {
+    onValue(cRef,  snap => setChallenge(snap.val() || ''));
+    onValue(rRef,  snap => {
       const v = snap.val();
       if (v !== null) setCurrentRound(v);
     });
   }, [roomId]);
 
-  const createRoom = async () => {
+  // --------------------------------------------------------------------------------
+  // ESTE ES EL CAMBIO CLAVE: createRoom recibe los valores y los usa inmediatamente
+  // --------------------------------------------------------------------------------
+  const createRoom = async (opts: {
+    totalRounds: number;
+    timeLimit: number;
+    category: string;
+  }) => {
     const id = uuidv4();
     setRoomId(id);
+
+    // actualiza el estado interno también, por si lo necesitas leer luego en UI
+    _setTotalRounds(opts.totalRounds);
+    _setTimeLimit(opts.timeLimit);
+    _setCategory(opts.category);
+
+    // ahora escribe en Firebase con los valores que te pasan
     await set(dbRef(db, `rooms/${id}`), {
-      players:{}, photos:{}, votes:{}, scores:{},
-      challenge:'', round:1,
-      totalRounds, timeLimit, category
+      players: {},
+      photos: {},
+      votes: {},
+      scores: {},
+      challenge: '',
+      round: 1,
+      totalRounds: opts.totalRounds,
+      timeLimit: opts.timeLimit,
+      category: opts.category
     });
   };
 
+  // Resto de funciones sin cambios
   const joinRoom = async () => {
     if (!roomId) return;
-    await set(dbRef(db, `rooms/${roomId}/players/${userId}`), { userId, username, userPhoto });
+    await set(dbRef(db, `rooms/${roomId}/players/${userId}`), {
+      userId, username, userPhoto
+    });
   };
 
   const joinRoomWithInfo = async (
@@ -130,10 +153,17 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
     });
   };
 
+  const STATIC: Record<string,string[]> = {
+    'Family friendly': ['Selfie con tu bebida favorita','Foto de un abrazo de grupo','Captura a alguien bailando'],
+    'Plan tranqui':     ['Foto relajada en el sofá','Toma una foto con mascota','Captura un libro que estés leyendo'],
+    'Al siguiente nivel':['Foto haciendo acrobacia suave','Captura un salto al aire','Recrea una escena de película'],
+    'Pongámonos picantes...':['Selfie con gesto coqueto','Foto con algún accesorio rojo','Captura mirada intensa']
+  };
+
   const startRound = async () => {
     if (!roomId) return;
-    const list = STATIC[category] || STATIC['Family friendly'];
-    const reto = list[Math.floor(Math.random()*list.length)];
+    const lista = STATIC[category] || STATIC['Family friendly'];
+    const reto  = lista[Math.floor(Math.random()*lista.length)];
     await set(dbRef(db, `rooms/${roomId}/challenge`), reto);
     await set(dbRef(db, `rooms/${roomId}/round`), currentRound + 1);
     await set(dbRef(db, `rooms/${roomId}/photos`), {});
@@ -184,9 +214,13 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
       challenge,
       currentRound, setCurrentRound,
       totalRounds, timeLimit, category,
-      setCategory, setTimeLimit, setTotalRounds,
-      createRoom, joinRoom, joinRoomWithInfo,
-      startRound, submitPhoto, submitVote
+      setCategory: _setCategory,
+      createRoom,
+      joinRoom,
+      joinRoomWithInfo,
+      startRound,
+      submitPhoto,
+      submitVote
     }}>
       {children}
     </RoomContext.Provider>
