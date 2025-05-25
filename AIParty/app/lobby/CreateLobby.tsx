@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, Alert
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useNavigation } from '@react-navigation/native';
-import api from '../../app/services/api';
-import { socket } from '../../app/services/socket';
-import { useRoom } from '../../app/context/RoomContext';
+import api from '../services/api';
+import { socket } from '../services/socket';
+import { useRoom } from '../context/RoomContext';
 import { v4 as uuidv4 } from 'uuid';
 
 export default function CreateLobby() {
@@ -24,32 +29,37 @@ export default function CreateLobby() {
   >('Family friendly');
 
   const handleCreate = async () => {
+    if (!rounds.trim() || !time.trim()) {
+      Alert.alert('Debes poner número de rondas y tiempo');
+      return;
+    }
+
     const payload = {
       name: 'AIParty Lobby',
       totalRounds: Number(rounds),
       timeLimit: Number(time),
       category: categoryState
     };
-    try {
-      console.log('Creando sala con:', { gameModeState, ...payload });
-      const { data } = await api.post('/rooms', payload);
-      console.log('Respuesta backend:', data);
 
-      // => guardo todo en contexto
+    try {
+      const { data } = await api.post('/rooms', payload);
+
+      // Context
       setRoomId(data.roomId);
-      setUserId(uuidv4());
+      const userUuid = uuidv4();
+      setUserId(userUuid);
       setGameMode(gameModeState);
       setCategory(categoryState);
       setTimeLimit(Number(time));
       setTotalRounds(Number(rounds));
       setCurrentRound(1);
 
-      // me uno al canal Socket
-      socket.emit('join-room', data.roomId, uuidv4());
+      // Join via socket
+      socket.emit('join-room', data.roomId, userUuid);
       nav.navigate('HostLobby');
     } catch (err) {
-      console.error('Error creando sala', err);
-      Alert.alert('Error', 'No se pudo crear la sala. Revisa la consola.');
+      Alert.alert('Error', 'No se pudo crear la sala');
+      console.error(err);
     }
   };
 
@@ -60,10 +70,10 @@ export default function CreateLobby() {
       <Text style={styles.label}>Modo de juego</Text>
       <View style={styles.pickerContainer}>
         <Picker
+          mode="dropdown"
           selectedValue={gameModeState}
           onValueChange={val => setGameModeState(val)}
           style={styles.picker}
-          dropdownIconColor="#757575"
         >
           <Picker.Item label="Desafío de fotos" value="Desafío de fotos" />
           <Picker.Item label="El Reto" value="El Reto" />
@@ -78,24 +88,21 @@ export default function CreateLobby() {
         onChangeText={setRounds}
       />
 
-      <Text style={styles.label}>Tiempo límite</Text>
-      <View style={styles.row}>
-        <TextInput
-          style={[styles.input, { flex: 1 }]}
-          keyboardType="numeric"
-          value={time}
-          onChangeText={setTime}
-        />
-        <Text style={styles.unit}>segundos</Text>
-      </View>
+      <Text style={styles.label}>Tiempo límite (segundos)</Text>
+      <TextInput
+        style={styles.input}
+        keyboardType="numeric"
+        value={time}
+        onChangeText={setTime}
+      />
 
       <Text style={styles.label}>Categoría de retos</Text>
       <View style={styles.pickerContainer}>
         <Picker
+          mode="dropdown"
           selectedValue={categoryState}
           onValueChange={val => setCategoryState(val)}
           style={styles.picker}
-          dropdownIconColor="#757575"
         >
           <Picker.Item label="Family friendly" value="Family friendly" />
           <Picker.Item label="Plan tranqui" value="Plan tranqui" />
@@ -145,13 +152,11 @@ const styles = StyleSheet.create({
   pickerContainer: {
     backgroundColor: '#FFFFFF',
     borderRadius: 6,
-    overflow: 'hidden',
     marginTop: 5,
+    // overflow: 'hidden'  // <-- lo quitamos para que el menú desplegable no se recorte
   },
   picker: {
     height: 53,
-    width: 'auto',
-    alignContent: 'center',
     fontFamily: 'Nerko One',
     fontSize: 25,
   },
@@ -164,16 +169,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Nerko One',
     fontSize: 25,
     color: '#000000',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  unit: {
-    fontFamily: 'Nerko One',
-    fontSize: 25,
-    color: '#FFFFFF',
-    marginLeft: 8,
   },
   actions: {
     flexDirection: 'row',

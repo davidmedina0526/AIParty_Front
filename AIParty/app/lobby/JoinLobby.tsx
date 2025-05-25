@@ -1,11 +1,11 @@
+// app/screens/JoinLobby.tsx
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import api from '../../app/services/api';
-import { socket } from '../../app/services/socket';
-import { useRoom } from '../../app/context/RoomContext';
+import api from '../services/api';
+import { socket } from '../services/socket';
+import { useRoom } from '../context/RoomContext';
 import { v4 as uuidv4 } from 'uuid';
-import { Ionicons } from '@expo/vector-icons';
 
 export default function JoinLobby() {
   const nav = useNavigation<any>();
@@ -13,46 +13,31 @@ export default function JoinLobby() {
   const [code, setCode] = useState('');
 
   const handleJoin = async () => {
-    await api.get(`/rooms/${code}`);
-    setRoomId(code);
-    const u = uuidv4();
-    setUserId(u);
-    socket.emit('join-room', code, u);
-    nav.navigate('JoinedLobby');
+    if (!code) {
+      Alert.alert('Ingresa el código de sala');
+      return;
+    }
+    try {
+      await api.get(`/rooms/${code}`);
+      setRoomId(code);
+      const u = uuidv4();
+      setUserId(u);
+      socket.emit('join-room', code, u);
+      nav.navigate('JoinedLobby');
+    } catch {
+      Alert.alert('Sala no encontrada');
+    }
   };
 
   return (
     <View style={styles.container}>
-
       <Text style={styles.title}>Unirse a sala</Text>
-
-      <Text style={styles.label}>Código de sala</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="ABC123"
-        placeholderTextColor="#757575"
-        value={code}
-        onChangeText={setCode}
-      />
-
-      <TouchableOpacity 
-        style={styles.qrButton}
-        onPress={() => nav.navigate('QRScanner')}
-      >
-        <Ionicons name="qr-code-outline" size={32} color="#FFFFFF" />
-      </TouchableOpacity>
-
+      <TextInput style={styles.input} value={code} onChangeText={setCode} placeholder="ABC123" />
       <View style={styles.actions}>
-        <TouchableOpacity
-          style={[styles.button, { backgroundColor: '#009DFF' }]}
-          onPress={() => nav.goBack()}
-        >
+        <TouchableOpacity style={[styles.button, { backgroundColor: '#009DFF' }]} onPress={() => nav.goBack()}>
           <Text style={styles.buttonText}>Atrás</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.button, { backgroundColor: '#FF00C8' }]}
-          onPress={handleJoin}
-        >
+        <TouchableOpacity style={[styles.button, { backgroundColor: '#FF00C8' }]} onPress={handleJoin}>
           <Text style={styles.buttonText}>Entrar</Text>
         </TouchableOpacity>
       </View>

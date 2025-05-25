@@ -1,21 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { View, ScrollView, TouchableOpacity, Image, Text, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import api from '../../app/services/api';
-import { socket } from '../../app/services/socket';
-import { useRoom } from '../../app/context/RoomContext';
+import api from '../services/api';
+import { socket } from '../services/socket';
+import { useRoom } from '../context/RoomContext';
 
-type Photo = { photoUrl: string; userId: string };
+type Photo = { photoUrl: string; userId: string; username: string; userPhoto: string };
 
 export default function PhotoChallengeVote() {
   const nav = useNavigation<any>();
-  const { roomId, timeLimit } = useRoom();
+  const { roomId, timeLimit, userId } = useRoom();
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(timeLimit);
 
   useEffect(() => {
-    api.get<Photo[]>(`/rooms/${roomId}/photos`).then(r => setPhotos(r.data));
+    api.get(`/rooms/${roomId}/photos`).then(r => setPhotos(r.data));
+    socket.on('photo-list-updated', setPhotos);
+    return () => { socket.off('photo-list-updated', setPhotos); };
   }, []);
 
   useEffect(() => {
@@ -26,7 +28,7 @@ export default function PhotoChallengeVote() {
 
   const submitVote = () => {
     if (!selected) return;
-    api.post(`/rooms/${roomId}/votes`, { photoId: selected });
+    api.post(`/rooms/${roomId}/votes`, { voterId: userId, targetUserId: selected });
     socket.emit('voting-complete', roomId);
     nav.replace('RoundCompleted');
   };
@@ -34,7 +36,6 @@ export default function PhotoChallengeVote() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>¡A votar!</Text>
-
       <ScrollView contentContainerStyle={styles.votesContainer}>
         {photos.map(p => (
           <TouchableOpacity
@@ -43,18 +44,18 @@ export default function PhotoChallengeVote() {
             onPress={() => setSelected(p.userId)}
           >
             <Image source={{ uri: p.photoUrl }} style={styles.photoContainer} />
+            <View style={{ alignItems: "center" }}>
+              {p.userPhoto ? <Image source={{ uri: p.userPhoto }} style={{ width: 28, height: 28, borderRadius: 14, marginTop: 3 }} /> : null}
+              <Text style={{ color: "#000", fontFamily: "Nerko One", fontSize: 17 }}>{p.username}</Text>
+            </View>
           </TouchableOpacity>
         ))}
       </ScrollView>
-
       <View style={styles.menu}>
         <View style={styles.timer}>
           <Text style={styles.time}>{seconds}</Text>
         </View>
-        <TouchableOpacity
-          style={[styles.button, { backgroundColor: '#FF00C8' }]}
-          onPress={submitVote}
-        >
+        <TouchableOpacity style={[styles.button, { backgroundColor: '#FF00C8' }]} onPress={submitVote}>
           <Text style={styles.buttonText}>Subir voto</Text>
         </TouchableOpacity>
       </View>

@@ -1,21 +1,89 @@
-import React, { useState } from 'react';
+// app/screens/PlayerLobby.tsx
+import React, { useEffect, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  FlatList,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useRoom } from '../../app/context/RoomContext';
+import { useRoom } from '../context/RoomContext';
+import api from '../services/api';
+import { socket } from '../services/socket';
+
+type Player = {
+  userId: string;
+  username: string;
+  userPhoto: string;
+};
 
 export default function PlayerLobby() {
-  const nav = useNavigation();
-  const { roomId } = useRoom();
-  const [username, setUsername] = useState('');
+  const nav = useNavigation<any>();
+  const { roomId, userId } = useRoom();
+  const [players, setPlayers] = useState<Player[]>([]);
+
+  useEffect(() => {
+    // 1) fetch inicial
+    api
+      .get<Player[]>(`/rooms/${roomId}/players`)
+      .then((res) => setPlayers(res.data))
+      .catch(() => setPlayers([]));
+
+    // 2) emitir join-room para registrarse en el socket
+    socket.emit('join-room', roomId, userId);
+
+    // 3) escuchar actualizaciones
+    socket.on('player-list-updated', (list: Player[]) => {
+      setPlayers(list);
+    });
+
+    return () => {
+      socket.off('player-list-updated');
+    };
+  }, [roomId]);
 
   return (
     <View style={styles.container}>
-
       <Text style={styles.title}>Lobby</Text>
-
       <Text style={styles.label}>Esperando al anfitrión...</Text>
+
+      <FlatList
+        data={players}
+        keyExtractor={(item) => item.userId}
+        contentContainerStyle={{ marginTop: 20 }}
+        renderItem={({ item }) => (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              marginBottom: 8,
+            }}
+          >
+            {item.userPhoto ? (
+              <Image
+                source={{ uri: item.userPhoto }}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  marginRight: 12,
+                }}
+              />
+            ) : null}
+            <Text
+              style={{
+                fontSize: 18,
+                color: '#FFF',
+                fontFamily: 'Nerko One',
+              }}
+            >
+              {item.username || 'Sin nombre'}
+            </Text>
+          </View>
+        )}
+      />
 
       <View style={styles.actions}>
         <TouchableOpacity
@@ -26,8 +94,9 @@ export default function PlayerLobby() {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.code}>{username}</Text>
-      <Text style={styles.code}>Código: {roomId.slice(0,6).toUpperCase()}</Text>
+      <Text style={styles.code}>
+        Código: {roomId.slice(0, 6).toUpperCase()}
+      </Text>
     </View>
   );
 }
@@ -50,25 +119,14 @@ const styles = StyleSheet.create({
     fontFamily: 'Nerko One',
     fontSize: 35,
     color: '#FFFFFF',
-    marginTop: 120,
+    marginTop: 20,
     alignSelf: 'center',
     textAlign: 'center',
-  },
-  input: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 5,
-    paddingHorizontal: 10,
-    height: 53,
-    marginTop: 6,
-    fontFamily: 'Nerko One',
-    fontSize: 25,
-    color: '#000000',
   },
   actions: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 150,
-    marginBottom: 5,
+    marginTop: 80,
   },
   button: {
     flex: 0.48,
@@ -87,5 +145,5 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginTop: 10,
     textAlign: 'center',
-  }
+  },
 });
