@@ -1,53 +1,55 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { socket } from '../../app/services/socket';
 import { useRoom } from '../../app/context/RoomContext';
 
 export default function TheChallengePunishment() {
   const nav = useNavigation<any>();
-  const { challenge, setChallenge, roomId, category, timeLimit, currentRound, totalRounds } = useRoom();
+  const {
+    generateNextChallenge,
+    challenge,
+    setChallenge,
+    timeLimit,
+    currentRound,
+    totalRounds
+  } = useRoom();
   const [seconds, setSeconds] = useState(timeLimit);
 
+  // Al montar, pedimos una nueva "penitencia" (usamos el mismo generador)
   useEffect(() => {
-    socket.emit('get-penalty', { roomId, category }, (penalty: string) => {
-      setChallenge(penalty);
-      setSeconds(timeLimit);
-    });
-  }, []);
+    generateNextChallenge();
+    setSeconds(timeLimit);
+  }, [generateNextChallenge, timeLimit]);
 
+  // Cuenta atrás y avance de ronda o podio
   useEffect(() => {
-    if (seconds <= 0) {
-      // si termina la penitencia avanzo
+    const timer = setInterval(() => setSeconds(s => s - 1), 1000);
+    if (seconds < 0) {
+      clearInterval(timer);
       if (currentRound < totalRounds) {
         nav.replace('Round');
       } else {
         nav.replace('FinalPodium');
       }
     }
-    const timer = setInterval(() => setSeconds(s => s - 1), 1000);
     return () => clearInterval(timer);
-  }, [seconds]);
+  }, [seconds, nav, currentRound, totalRounds]);
 
   return (
     <View style={styles.container}>
-
       <Text style={styles.title}>Ronda {currentRound}</Text>
-
       <View style={styles.timer}>
-        <Text style={styles.time}>{seconds}</Text>
+        <Text style={styles.time}>{seconds >= 0 ? seconds : 0}</Text>
       </View>
-
       <Text style={styles.label}>{challenge}</Text>
-
       <View style={styles.actions}>
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: '#009DFF' }]}
-                onPress={() => nav.replace('Round')}
-              >
-                <Text style={styles.buttonText}>Completó</Text>
-              </TouchableOpacity>
-            </View>
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: '#009DFF' }]}
+          onPress={() => nav.replace('Round')}
+        >
+          <Text style={styles.buttonText}>Completó</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -63,16 +65,7 @@ const styles = StyleSheet.create({
     fontSize: 60,
     color: '#FFFFFF',
     textAlign: 'center',
-    marginBottom: 20,
     marginTop: 80,
-  },
-  label: {
-    fontFamily: 'Nerko One',
-    fontSize: 32,
-    color: '#FFFFFF',
-    marginTop: 100,
-    alignSelf: 'center',
-    textAlign: 'center',
   },
   timer: {
     justifyContent: 'center',
@@ -89,14 +82,21 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     textAlign: 'center',
   },
+  label: {
+    fontFamily: 'Nerko One',
+    fontSize: 32,
+    color: '#FFFFFF',
+    marginTop: 100,
+    textAlign: 'center',
+  },
   actions: {
     flexDirection: 'row',
     justifyContent: 'center',
     marginTop: 100,
   },
   button: {
-    flex: 0.48,
     paddingVertical: 12,
+    paddingHorizontal: 24,
     borderRadius: 8,
     alignItems: 'center',
   },

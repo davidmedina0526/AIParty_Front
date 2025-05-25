@@ -1,55 +1,43 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { socket } from '../../app/services/socket';
 import { useRoom } from '../../app/context/RoomContext';
 
 export default function TheChallengeScreen() {
   const nav = useNavigation<any>();
-  const { setChallenge, challenge, roomId, category, timeLimit, currentRound } = useRoom();
+  const { generateNextChallenge, challenge, timeLimit } = useRoom();
   const [seconds, setSeconds] = useState(timeLimit);
 
+  // Al montar, pedimos un nuevo reto y reiniciamos el contador
   useEffect(() => {
-    socket.on('new-challenge', (text: string) => {
-      setChallenge(text);
-      setSeconds(timeLimit);
-    });
-    socket.emit('start-round', { roomId, category });
-    return () => { socket.off('new-challenge'); };
-  }, []);
+    generateNextChallenge();
+    setSeconds(timeLimit);
+  }, [generateNextChallenge, timeLimit]);
 
+  // Cuenta atrás y navegación al final
   useEffect(() => {
-    if (seconds <= 0) {
-      nav.replace('TheChallengePunishment');
-    }
     const timer = setInterval(() => setSeconds(s => s - 1), 1000);
+    if (seconds < 0) {
+      clearInterval(timer);
+      nav.replace('PhotoChallengeScreen');
+    }
     return () => clearInterval(timer);
-  }, [seconds]);
+  }, [seconds, nav]);
 
   return (
     <View style={styles.container}>
-
-      <Text style={styles.title}>Ronda {currentRound}</Text>
-
+      <Text style={styles.title}>Ronda</Text>
       <View style={styles.timer}>
-        <Text style={styles.time}>{seconds}</Text>
+        <Text style={styles.time}>{seconds >= 0 ? seconds : 0}</Text>
       </View>
-
       <Text style={styles.label}>{challenge}</Text>
-
       <View style={styles.actions}>
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: '#EF0004' }]}
-                onPress={() => nav.navigate('TheChallengePunishment')}
-              >
-                <Text style={styles.buttonText}>No completó</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: '#009DFF' }]}
-                onPress={() => nav.replace('Round')}
-              >
-                <Text style={styles.buttonText}>Completó</Text>
-              </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: '#FF00C8' }]}
+          onPress={() => nav.replace('PhotoChallengeCamera')}
+        >
+          <Text style={styles.buttonText}>Tomar foto</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -66,16 +54,7 @@ const styles = StyleSheet.create({
     fontSize: 60,
     color: '#FFFFFF',
     textAlign: 'center',
-    marginBottom: 20,
     marginTop: 80,
-  },
-  label: {
-    fontFamily: 'Nerko One',
-    fontSize: 32,
-    color: '#FFFFFF',
-    marginTop: 100,
-    alignSelf: 'center',
-    textAlign: 'center',
   },
   timer: {
     justifyContent: 'center',
@@ -92,14 +71,21 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     textAlign: 'center',
   },
+  label: {
+    fontFamily: 'Nerko One',
+    fontSize: 32,
+    color: '#FFFFFF',
+    marginTop: 100,
+    textAlign: 'center',
+  },
   actions: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     marginTop: 100,
   },
   button: {
-    flex: 0.48,
     paddingVertical: 12,
+    paddingHorizontal: 24,
     borderRadius: 8,
     alignItems: 'center',
   },

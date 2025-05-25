@@ -1,52 +1,30 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet } from "react-native";
-import { useNavigation } from "@react-navigation/native";
-import { socket } from "../services/socket";
-import { useRoom } from "../context/RoomContext";
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 
 export default function Round() {
-  const nav = useNavigation();
-  const { roomId, setChallenge } = useRoom();
-  const [countdown, setCountdown] = useState(3);
+  const nav = useNavigation<any>();
+  const [counter, setCounter] = useState(3);
 
   useEffect(() => {
-    // Cuando el backend responda con el reto
-    socket.on("new-challenge", (text) => {
-      setChallenge(text);
-      // Saltamos inmediatamente a la pantalla de PhotoChallengeScreen
-      nav.replace("PhotoChallengeScreen");
-    });
-
-    // Contador 3 → 0
-    const timer = setInterval(() => {
-      setCountdown(c => c - 1);
-    }, 1000);
-
-    if (countdown < 0) {
+    const timer = setInterval(() => setCounter(c => c - 1), 1000);
+    if (counter < 0) {
       clearInterval(timer);
-      // Si llegamos a 0 y aún no llegó el reto, forzamos la petición
-      socket.emit("start-round", { roomId, category: "" });
+      nav.replace('PhotoChallengeScreen');
     }
-
-    return () => {
-      clearInterval(timer);
-      socket.off("new-challenge");
-    };
-  }, [countdown]);
+    return () => clearInterval(timer);
+  }, [counter]);
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>¡Preparados!</Text>
-      <Text style={styles.timer}>{countdown >= 0 ? countdown : "..."}</Text>
+      <Text style={styles.timer}>{counter >= 0 ? counter : '...'}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#261683", alignItems: "center", justifyContent: "center" },
-  title: { fontSize: 50, color: "#FFF", marginBottom: 20 },
-  timer: {
-    fontSize: 60, color: "#AE00FF",
-    backgroundColor: "#AE00FF20", padding: 20, borderRadius: 10
-  }
+  container:{ flex:1, backgroundColor:'#261683', alignItems:'center', justifyContent:'center' },
+  title:    { fontSize:50, color:'#FFF', marginBottom:20 },
+  timer:    { fontSize:60, color:'#AE00FF', backgroundColor:'#AE00FF20', padding:20, borderRadius:10 }
 });

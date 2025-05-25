@@ -1,113 +1,26 @@
-// app/screens/JoinedLobby.tsx
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Image,
-  Alert,
-} from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React from 'react';
+import { View, Text, StyleSheet, FlatList, Image } from 'react-native';
 import { useRoom } from '../context/RoomContext';
-import api from '../services/api';
-import { socket } from '../services/socket';
-import * as ImagePicker from 'expo-image-picker';
 
-export default function JoinedLobby() {
-  const nav = useNavigation<any>();
-  const { roomId, setUsername, setUserPhoto, userId } = useRoom();
-  const [localUsername, setLocalUsername] = useState('');
-  const [localPhoto, setLocalPhoto] = useState<string>('');
-  const [loading, setLoading] = useState(false);
-
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
-    });
-    if (!result.canceled && result.assets.length > 0) {
-      setLocalPhoto(`data:image/jpeg;base64,${result.assets[0].base64}`);
-    }
-  };
-
-  const handleEnter = async () => {
-    if (!localUsername.trim()) {
-      Alert.alert('Falta tu nombre', 'Pon tu nombre para continuar');
-      return;
-    }
-    setUsername(localUsername.trim());
-    setUserPhoto(localPhoto);
-
-    setLoading(true);
-    try {
-      await api.post(`/rooms/${roomId}/players`, {
-        userId,
-        username: localUsername.trim(),
-        userPhoto: localPhoto,
-      });
-      // **EMIT** al socket para notificar a todos
-      socket.emit('join-room', roomId, userId);
-      nav.navigate('PlayerLobby');
-    } catch (e) {
-      Alert.alert('Error', 'No se pudo unir a la sala');
-    } finally {
-      setLoading(false);
-    }
-  };
+export default function PlayerLobby() {
+  const { players, roomId } = useRoom();
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Unirse a sala</Text>
-      <Text style={styles.label}>Inserta tu nombre</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Nombre"
-        value={localUsername}
-        onChangeText={setLocalUsername}
+      <Text style={styles.title}>Lobby</Text>
+      <FlatList
+        data={players}
+        keyExtractor={i=>i.userId}
+        renderItem={({item})=>(
+          <View style={{flexDirection:'row',alignItems:'center',margin:4}}>
+            {item.userPhoto
+              ? <Image source={{uri:item.userPhoto}} style={{width:32,height:32,borderRadius:16,marginRight:8}}/>
+              : null}
+            <Text style={{color:'#FFF',fontSize:20}}>{item.username}</Text>
+          </View>
+        )}
       />
-
-      <Text style={styles.label}>Pon una foto... (opcional)</Text>
-      <View style={styles.selectImage}>
-        <TouchableOpacity
-          style={styles.selectFileButton}
-          onPress={pickImage}
-        >
-          <Text style={styles.buttonText}>Buscar archivo</Text>
-        </TouchableOpacity>
-        {localPhoto ? (
-          <Image
-            source={{ uri: localPhoto }}
-            style={{ width: 60, height: 60, marginLeft: 12, borderRadius: 30 }}
-          />
-        ) : null}
-      </View>
-
-      <View style={styles.actions}>
-        <TouchableOpacity
-          style={[styles.button, { backgroundColor: '#009DFF' }]}
-          onPress={() => nav.goBack()}
-        >
-          <Text style={styles.buttonText}>Atrás</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.button, { backgroundColor: '#FF00C8' }]}
-          onPress={handleEnter}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>
-            {loading ? 'Entrando...' : 'Entrar'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <Text style={styles.code}>
-        Código: {roomId.slice(0, 6).toUpperCase()}
-      </Text>
+      <Text style={styles.code}>Código: {roomId.slice(0,6).toUpperCase()}</Text>
     </View>
   );
 }
