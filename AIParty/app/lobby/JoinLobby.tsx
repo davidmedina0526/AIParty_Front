@@ -34,35 +34,62 @@ export default function JoinLobby() {
   }, []);
 
   const pickImage = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
-    if (!res.canceled) setImageUri(res.uri);
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7
+    });
+    if (!res.canceled && res.assets.length > 0) {
+      setImageUri(res.assets[0].uri);
+    }
   };
+  
   const takePhoto = async () => {
-    const res = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
-    if (!res.canceled) setImageUri(res.uri);
+    const res = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7
+    });
+    if (!res.canceled && res.assets.length > 0) {
+      setImageUri(res.assets[0].uri);
+    }
   };
 
   const handleJoin = async () => {
-    const roomCode = code.trim();
+    const roomCode = code.trim().toLowerCase();
     if (!roomCode) return Alert.alert('Error', 'Ingresa el código de sala');
     if (!name.trim()) return Alert.alert('Error', 'Ingresa tu nombre');
-
-    // Verificar sala existe
+  
+    let fullRoomId: string | null = null;
     try {
-      const snap = await get(dbRef(db, `rooms/${roomCode}`));
-      if (!snap.exists()) return Alert.alert('Error', 'Sala no encontrada');
-    } catch {
+      // Trae todas las rooms
+      const roomsSnap = await get(dbRef(db, 'rooms'));
+      if (!roomsSnap.exists()) {
+        return Alert.alert('Error', 'No hay salas disponibles');
+      }
+  
+      // Busca la sala cuyo ID comience por roomCode
+      roomsSnap.forEach(childSnap => {
+        const key = childSnap.key || '';
+        if (key.slice(0, 6).toLowerCase() === roomCode) {
+          fullRoomId = key;
+          return true; // rompe el forEach
+        }
+      });
+      if (!fullRoomId) {
+        return Alert.alert('Error', 'Sala no encontrada');
+      }
+    } catch (e) {
+      console.error(e);
       return Alert.alert('Error', 'No se pudo verificar la sala');
     }
-
-    // Generar ID y avatar
+  
+    // Generar ID y avatar (igual que tenías)
     const uId = uuidv4();
     let avatarUrl = '';
     if (imageUri) {
       try {
         const resp = await fetch(imageUri);
         const blob = await resp.blob();
-        const path = `avatars/${roomCode}/${uId}.jpg`;
+        const path = `avatars/${fullRoomId}/${uId}.jpg`;
         const ref  = storageRef(storage, path);
         await uploadBytes(ref, blob);
         avatarUrl = await getDownloadURL(ref);
@@ -70,13 +97,13 @@ export default function JoinLobby() {
         Alert.alert('Aviso', 'No se pudo subir la foto. Continúas sin avatar.');
       }
     }
-
-    // Llamo a la nueva función que escribe en Firebase
-    await joinRoomWithInfo(roomCode, uId, name.trim(), avatarUrl);
-
-    // Navegar al lobby de jugador
+  
+    // Ya con el ID completo, te unes:
+    await joinRoomWithInfo(fullRoomId, uId, name.trim(), avatarUrl);
+  
+    // Navega a PlayerLobby
     nav.replace('PlayerLobby');
-  };
+  };  
 
   return (
     <View style={styles.container}>
