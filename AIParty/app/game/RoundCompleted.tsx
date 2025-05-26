@@ -5,21 +5,48 @@ import { useRoom } from '../context/RoomContext';
 
 export default function RoundCompleted() {
   const nav = useNavigation<any>();
-  const { currentRound, totalRounds, timeLimit } = useRoom();
-  const [seconds, setSeconds] = useState(timeLimit);
+  const {
+    currentRound,
+    totalRounds,
+    timeLimit,
+    roundStartTime,
+    username,
+    roomId,
+    startRound,
+    advanceRound
+  } = useRoom();
+
+  const [seconds, setSeconds] = useState(() =>
+    Math.max(0, timeLimit - Math.floor((Date.now() - roundStartTime) / 1000))
+  );
 
   useEffect(() => {
-    const timer = setInterval(() => setSeconds(s => s - 1), 1000);
+    const timer = setInterval(() => {
+      const rem = Math.max(0, timeLimit - Math.floor((Date.now() - roundStartTime) / 1000));
+      setSeconds(rem);
+    }, 1000);
+
     if (seconds <= 0) {
       clearInterval(timer);
+
+      // Solo el host avanza la ronda y genera el siguiente reto
+      if (username === 'Anfitrión') {
+        (async () => {
+          await advanceRound();
+          await startRound();
+        })();
+      }
+
+      // Navegar según corresponda
       if (currentRound < totalRounds) {
         nav.replace('Round');
       } else {
         nav.replace('FinalPodium');
       }
     }
+
     return () => clearInterval(timer);
-  }, [seconds]);
+  }, [seconds, timeLimit, roundStartTime, username, currentRound, totalRounds]);
 
   return (
     <View style={styles.container}>

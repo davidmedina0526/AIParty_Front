@@ -13,8 +13,10 @@ import { useRoom } from '../context/RoomContext';
 
 export default function PhotoChallengeCamera() {
   const navigation = useNavigation<any>();
-  const { timeLimit, submitPhotoFromUri } = useRoom();
-  const [seconds, setSeconds] = useState(timeLimit);
+  const { timeLimit, roundStartTime, submitPhotoFromUri } = useRoom();
+  const [seconds, setSeconds] = useState(() =>
+    Math.max(0, timeLimit - Math.floor((Date.now() - roundStartTime) / 1000))
+  );
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
@@ -29,10 +31,12 @@ export default function PhotoChallengeCamera() {
   useEffect(() => {
     if (permission?.status !== PermissionStatus.GRANTED) return;
     const timer = setInterval(() => {
-      setSeconds(s => Math.max(0, s - 1));
+      const rem = Math.max(0, timeLimit - Math.floor((Date.now() - roundStartTime) / 1000));
+      setSeconds(rem);
     }, 1000);
+
     return () => clearInterval(timer);
-  }, [permission]);
+  }, [permission, roundStartTime, timeLimit]);
 
   // 3) Navegación cuando seconds llega a 0
   useEffect(() => {

@@ -5,18 +5,24 @@ import { useRoom } from '../context/RoomContext';
 
 export default function PhotoChallengeScore() {
   const nav = useNavigation<any>();
-  const { scores, roomId } = useRoom();
+  const { scores, players, roomId } = useRoom();
 
   const sorted = [...scores].sort((a,b) => b.votes - a.votes);
+
+  const maxPts = players.length * 100;
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Resultados</Text>
-      {sorted.map(s => (
-        <Text key={s.userId} style={styles.scoreText}>
-          {s.username}: {s.votes}
-        </Text>
-      ))}
+      {sorted.map((s, i) => {
+        const pts = (players.length - i) * 100;
+        return (
+          <Text key={s.userId} style={styles.scoreText}>
+            {s.username}: {pts} pts
+          </Text>
+        );
+      })}
+      
       <TouchableOpacity
         style={[styles.button, { backgroundColor: '#FF00C8' }]}
         onPress={() => nav.replace('Round')}

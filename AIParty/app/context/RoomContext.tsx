@@ -39,9 +39,11 @@ export interface RoomContextData {
 
   totalRounds: number;
   timeLimit: number;
+  roundStartTime: number;
   category: string;
   setCategory: (c: string) => void;
 
+  advanceRound: () => Promise<void>;
   createRoom: (opts: {
     totalRounds: number;
     timeLimit: number;
@@ -88,8 +90,9 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
   const [challenge, setChallenge]       = useState('');
   const [currentRound, setCurrentRound] = useState(1);
 
-  const [totalRounds, _setTotalRounds] = useState(4);
-  const [timeLimit, _setTimeLimit]     = useState(30);
+  const [totalRounds, _setTotalRounds]   = useState(4);
+  const [timeLimit, _setTimeLimit]       = useState(30);
+  const [roundStartTime, _setRoundStart] = useState<number>(0);
   const [category, _setCategory]       = useState('Family friendly');
 
   const notificationListener = useRef<Notifications.Subscription | null>(null);
@@ -184,6 +187,10 @@ useEffect(() => {
     const cRef  = dbRef(db, `rooms/${roomId}/challenge`);
     const rRef  = dbRef(db, `rooms/${roomId}/round`);
 
+    const trRef = dbRef(db, `rooms/${roomId}/totalRounds`);
+    const tlRef = dbRef(db, `rooms/${roomId}/timeLimit`);
+    const rsRef = dbRef(db, `rooms/${roomId}/roundStartTime`);
+
     onValue(pRef,  snap => setPlayers(snap.val() ? Object.values(snap.val()) : []));
     onValue(phRef, snap => setPhotos  (snap.val() ? Object.values(snap.val()) : []));
     onValue(vRef,  snap => setVotes   (snap.val() || {}));
@@ -192,6 +199,13 @@ useEffect(() => {
     onValue(rRef,  snap => {
       const v = snap.val();
       if (v !== null) setCurrentRound(v);
+    });
+
+    onValue(trRef, snap => { const v = snap.val(); if (v !== null) _setTotalRounds(v); });
+    onValue(tlRef, snap => { const v = snap.val(); if (v !== null) _setTimeLimit(v); });
+    onValue(rsRef, snap => {
+      const v = snap.val();
+      if (v !== null) _setRoundStart(v);
     });
   }, [roomId]);
 
@@ -238,6 +252,9 @@ useEffect(() => {
 
   const startRound = async () => {
     if (!roomId) return;
+    const ts = Date.now();
+    _setRoundStart(ts);
+    await set(dbRef(db, `rooms/${roomId}/roundStartTime`), ts);
     const prompt = `Crea un reto de fotografía para la categoría "${category}" , indica **únicamente en una sola frase** cómo debe ser la fotografía.`;
     let retoIA = '';
     try {
@@ -258,11 +275,15 @@ useEffect(() => {
       retoIA = list[Math.floor(Math.random()*list.length)];
     }
     await set(dbRef(db, `rooms/${roomId}/challenge`), retoIA);
-    await set(dbRef(db, `rooms/${roomId}/round`), currentRound + 1);
     await set(dbRef(db, `rooms/${roomId}/photos`), {});
     await set(dbRef(db, `rooms/${roomId}/votes`), {});
     await set(dbRef(db, `rooms/${roomId}/scores`), {});
   };
+
+  const advanceRound = async () => {
+   if (!roomId) return;
+     await set(dbRef(db, `rooms/${roomId}/round`), currentRound + 1);
+   };
 
   const submitPhoto = async (base64: string) => {
     if (!roomId) return;
@@ -277,19 +298,37 @@ useEffect(() => {
     });
   };
 
+  // Nueva versión: descarga el URI como Blob y lo sube con uploadBytes
   const submitPhotoFromUri = async (uri: string) => {
     if (!roomId) return;
-    const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-    const dataUrl = `data:image/jpeg;base64,${b64}`;
-    const path    = `photos/${roomId}/${userId}.jpg`;
-    const ref     = storageRef(storage, path);
-    await uploadString(ref, dataUrl, 'data_url');
-    const url     = await getDownloadURL(ref);
-    await set(dbRef(db, `rooms/${roomId}/photos/${userId}`), {
-      userId, username, userPhoto, photoUrl: url
-    });
-    return url;
+    try {
+      // 1) Traer la imagen como Blob
+      const response = await fetch(uri);
+      const blob = await response.blob();
+
+      // 2) Definir ruta y subir
+      const path = `photos/${roomId}/${userId}.jpg`;
+      const ref  = storageRef(storage, path);
+      await uploadBytes(ref, blob);
+
+      // 3) Obtener URL pública
+      const url = await getDownloadURL(ref);
+
+      // 4) Guardar en RTDB
+      await set(dbRef(db, `rooms/${roomId}/photos/${userId}`), {
+        userId,
+        username,
+        userPhoto,
+        photoUrl: url
+      });
+
+      return url;
+    } catch (e) {
+      console.error('submitPhotoFromUri error:', e);
+      throw e;
+    }
   };
+ 
 
   const submitVote = async (targetUserId: string) => {
     if (!roomId) return;
@@ -320,11 +359,12 @@ useEffect(() => {
       players, photos, votes, scores,
       challenge,
       currentRound, setCurrentRound,
-      totalRounds, timeLimit, category, setCategory: _setCategory,
+      totalRounds, timeLimit, roundStartTime, category, setCategory: _setCategory,
       createRoom,
       joinRoom,
       joinRoomWithInfo,
       startRound,
+      advanceRound,
       submitPhoto,
       submitPhotoFromUri,
       submitVote,

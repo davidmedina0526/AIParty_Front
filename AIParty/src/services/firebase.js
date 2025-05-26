@@ -8,12 +8,12 @@ import {
   push,
   update,
   get,
-  uploadString
 } from 'firebase/database';
 import {
   getStorage,
   ref as storageRef,
   uploadBytes,
+  uploadString,
   getDownloadURL
 } from 'firebase/storage';
 
@@ -33,4 +33,4 @@ export const db = getDatabase(app);
 export const storage = getStorage(app);
 
 // Re-exporta lo que vas a usar
-export { dbRef, set, onValue, push, update, get, storageRef, uploadBytes, getDownloadURL, uploadString };
+export {dbRef, set, onValue, push, update, get, storageRef, uploadBytes, uploadString, getDownloadURL};
