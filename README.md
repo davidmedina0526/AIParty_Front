@@ -1,10 +1,12 @@
+# AIParty_Front
+=======
 # 🎉 AIParty
 
 > **AIParty** es una aplicación móvil (React Native + Expo) de retos fotográficos multijugador que aprovecha IA generativa (Gemini) y Firebase Realtime DB/Storage para crear partidas rápidas, dinámicas y… ¡muy divertidas!  
 > Los jugadores se conectan mediante un código (o QR), reciben retos generados en tiempo real, compiten sacando la mejor foto y votan entre sí para coronar al ganador del podio final.
 
 <div align="center">
-  <img src="C:/Users/David Medina/Downloads/AIParty_icon.png" width="140" alt="Logo AIParty"/>
+  <img src="AIParty/assets/images/AIParty_image.png" width="140" alt="Logo AIParty"/>
 </div>
 
 ## ✨ Características
