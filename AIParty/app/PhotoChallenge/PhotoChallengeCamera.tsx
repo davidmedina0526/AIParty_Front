@@ -1,64 +1,72 @@
-// PhotoChallengeCamera.tsx
-import React, { useRef, useEffect, useState } from 'react'
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity,
   StyleSheet, Alert, Platform
-} from 'react-native'
+} from 'react-native';
 import {
   CameraView,
   useCameraPermissions,
   PermissionStatus
-} from 'expo-camera'
-import { useNavigation } from '@react-navigation/native'
-import { useRoom } from '../context/RoomContext'
+} from 'expo-camera';
+import { useNavigation } from '@react-navigation/native';
+import { useRoom } from '../context/RoomContext';
 
 export default function PhotoChallengeCamera() {
-  const navigation = useNavigation<any>()
-  const { timeLimit, submitPhoto } = useRoom()
-  const [seconds, setSeconds] = useState(timeLimit)
+  const navigation = useNavigation<any>();
+  const { timeLimit, submitPhotoFromUri } = useRoom();
+  const [seconds, setSeconds] = useState(timeLimit);
 
-  const [permission, requestPermission] = useCameraPermissions()
-  const cameraRef = useRef<CameraView | null>(null)
+  const [permission, requestPermission] = useCameraPermissions();
+  const cameraRef = useRef<CameraView | null>(null);
 
-  // Pedir permiso si es necesario
+  // 1) Pedir permiso si es necesario
   useEffect(() => {
-    if (!permission) return
-    if (!permission.granted) requestPermission()
-  }, [permission, requestPermission])
+    if (!permission) return;
+    if (!permission.granted) requestPermission();
+  }, [permission, requestPermission]);
 
-  // Countdown
+  // 2) Contador: solo decrementa
   useEffect(() => {
-    if (permission?.status !== PermissionStatus.GRANTED) return
+    if (permission?.status !== PermissionStatus.GRANTED) return;
     const timer = setInterval(() => {
-      setSeconds(s => {
-        if (s <= 0) {
-          clearInterval(timer)
-          navigation.replace('PhotoChallengeVote')
-          return 0
-        }
-        return s - 1
-      })
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [permission, navigation])
+      setSeconds(s => Math.max(0, s - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [permission]);
 
-  const handleSnap = async () => {
-    if (!cameraRef.current) return
-    try {
-      const photo = await cameraRef.current.takePictureAsync({ base64: true })
-      await submitPhoto(photo.base64!)
-      navigation.replace('PhotoChallengeVote')
-    } catch {
-      Alert.alert('Error', 'No se pudo tomar la foto.')
+  // 3) Navegación cuando seconds llega a 0
+  useEffect(() => {
+    if (seconds === 0) {
+      navigation.replace('PhotoChallengeVote');
     }
-  }
+  }, [seconds, navigation]);
 
+  // 4) Captura y envío de foto
+  const handleSnap = async () => {
+    if (!cameraRef.current) return;
+    try {
+      // Sólo pedimos la uri, no necesitamos base64
+      const { uri } = await cameraRef.current.takePictureAsync();
+      console.log('photo uri:', uri);
+  
+      // Llamamos a la nueva función
+      const url = await submitPhotoFromUri(uri);
+      console.log('Upload OK, URL:', url);
+  
+      navigation.replace('PhotoChallengeVote');
+    } catch (error: any) {
+      console.error('handleSnap error:', error);
+      Alert.alert('Error', `No se pudo procesar la foto:\n${error.message}`);
+    }
+  };
+
+  // Render según permisos / plataforma
   if (!permission) {
     return (
       <View style={styles.container}>
         <Text style={styles.infoText}>Cargando cámara…</Text>
       </View>
-    )
+    );
   }
   if (permission.status !== PermissionStatus.GRANTED) {
     return (
@@ -68,16 +76,17 @@ export default function PhotoChallengeCamera() {
           <Text style={styles.buttonText}>Solicitar permiso</Text>
         </TouchableOpacity>
       </View>
-    )
+    );
   }
   if (Platform.OS === 'web') {
     return (
       <View style={styles.container}>
         <Text style={styles.infoText}>La cámara no está disponible en web.</Text>
       </View>
-    )
+    );
   }
 
+  // Vista principal de cámara
   return (
     <View style={styles.container}>
       <CameraView
@@ -92,7 +101,7 @@ export default function PhotoChallengeCamera() {
         <Text style={styles.snapText}>📸</Text>
       </TouchableOpacity>
     </View>
-  )
+  );
 }
 
 const styles = StyleSheet.create({
@@ -153,4 +162,4 @@ const styles = StyleSheet.create({
     fontSize: 30,
     color: '#FFFFFF',
   },
-})
+});

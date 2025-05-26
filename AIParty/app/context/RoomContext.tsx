@@ -3,7 +3,7 @@ import {
   db,
   dbRef, set, onValue, get,
   storage, storageRef, uploadBytes, getDownloadURL
-} from '../services/firebase';
+} from '../../src/services/firebase';
 import { v4 as uuidv4 } from 'uuid';
 
 export type Player = { userId: string; username: string; userPhoto: string };
@@ -52,6 +52,7 @@ export interface RoomContextData {
   ) => Promise<void>;
   startRound: () => Promise<void>;
   submitPhoto: (base64: string) => Promise<void>;
+  submitPhotoFromUri: (uri: string) => Promise<string | undefined>;
   submitVote: (targetUserId: string) => Promise<void>;
 }
 
@@ -184,6 +185,24 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
     });
   };
 
+  const submitPhotoFromUri = async (uri: string) => {
+    if (!roomId) return;
+    // En React Native, fetch de file://… te devuelve un response válido
+    const res  = await fetch(uri);
+    const blob = await res.blob();
+
+    const path = `photos/${roomId}/${userId}.jpg`;
+    const ref  = storageRef(storage, path);
+    await uploadBytes(ref, blob);
+    const url  = await getDownloadURL(ref);
+
+    // Guarda la URL en tu RTDB
+    await set(dbRef(db, `rooms/${roomId}/photos/${userId}`), {
+      userId, username, userPhoto, photoUrl: url
+    });
+    return url;
+  };
+
   const submitVote = async (targetUserId: string) => {
     if (!roomId) return;
     await set(dbRef(db, `rooms/${roomId}/votes/${userId}`), {
@@ -220,6 +239,7 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
       joinRoomWithInfo,
       startRound,
       submitPhoto,
+      submitPhotoFromUri,
       submitVote
     }}>
       {children}

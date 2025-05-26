@@ -20,7 +20,7 @@
   "include": [
     "app/**/*",
     "src/**/*"
-  ],
+, "server/controllers/photoController.js", "server/routes/photoRoutes.js", "src/services/photoService.js", "src/services/firebase.js"  ],
   "exclude": [
     "node_modules",
     "babel.config.js",

@@ -12,7 +12,7 @@ import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { v4 as uuidv4 } from 'uuid';
 import { useRoom } from '../../app/context/RoomContext';
-import { get, dbRef, db, storage, storageRef, uploadBytes, getDownloadURL } from '../../app/services/firebase';
+import { get, dbRef, db, storage, storageRef, uploadBytes, getDownloadURL } from '../../src/services/firebase';
 
 export default function JoinLobby() {
   const nav = useNavigation<any>();

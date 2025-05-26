@@ -1,4 +1,5 @@
 import { initializeApp } from 'firebase/app';
+import 'react-native-url-polyfill/auto';
 import {
   getDatabase,
   ref as dbRef,
