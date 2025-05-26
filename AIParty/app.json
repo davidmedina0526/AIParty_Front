@@ -7,6 +7,9 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "extra": {
+      "GEMINI_API_KEY": "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"
+    },
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
