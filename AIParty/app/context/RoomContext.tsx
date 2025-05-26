@@ -1,16 +1,17 @@
 // app/context/RoomContext.tsx
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import * as FileSystem from 'expo-file-system';
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
+import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
 import {
   db,
   dbRef, set, onValue, get,
   storage, storageRef, uploadBytes, uploadString, getDownloadURL
 } from '../../src/services/firebase';
 import { v4 as uuidv4 } from 'uuid';
-import OpenAI from 'openai';
 
 export type Player = { userId: string; username: string; userPhoto: string };
 export type Photo  = { userId: string; photoUrl: string; username: string; userPhoto: string };
@@ -58,9 +59,22 @@ export interface RoomContextData {
   submitPhoto: (base64: string) => Promise<void>;
   submitPhotoFromUri: (uri: string) => Promise<string | undefined>;
   submitVote: (targetUserId: string) => Promise<void>;
+
+  registerForPushNotifications: () => Promise<string | undefined>;
+  sendUserJoinedNotification: (newUsername: string) => Promise<void>;
 }
 
 const RoomContext = createContext<RoomContextData>({} as any);
+
+Notifications.setNotificationHandler({
+  handleNotification: async (): Promise<Notifications.NotificationBehavior> => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
   const [roomId, setRoomId]             = useState('');
@@ -78,20 +92,89 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
   const [timeLimit, _setTimeLimit]     = useState(30);
   const [category, _setCategory]       = useState('Family friendly');
 
-  // Leer la API key desde app.json → extra
-  const manifest = Constants.manifest ?? (Constants as any).expoConfig;
-  const apiKey = manifest?.extra?.GEMINI_API_KEY as string | undefined;
-  if (!apiKey) {
-    console.warn('⚠️ No se encontró GEMINI_API_KEY en app.json → extra');
-  }
+  const notificationListener = useRef<Notifications.Subscription | null>(null);
+  const responseListener     = useRef<Notifications.Subscription | null>(null);
 
-  // Cliente OpenAI/Gemini
-  const openai = new OpenAI({
-    apiKey: apiKey || '',
-    ...(Platform.OS === 'web' ? { dangerouslyAllowBrowser: true } : {})
+  useEffect(() => {
+    registerForPushNotifications();
+    notificationListener.current = Notifications.addNotificationReceivedListener(() => {});
+    responseListener.current     = Notifications.addNotificationResponseReceivedListener(() => {});
+    return () => {
+      if (notificationListener.current)
+        Notifications.removeNotificationSubscription(notificationListener.current);
+      if (responseListener.current)
+        Notifications.removeNotificationSubscription(responseListener.current);
+    };
+  }, []);
+
+  const prevPlayersRef = useRef<Player[]>([]);
+
+useEffect(() => {
+  if (!roomId) return;
+  const pRef = dbRef(db, `rooms/${roomId}/players`);
+  return onValue(pRef, snap => {
+    const newPlayers = snap.val() ? Object.values(snap.val()) as Player[] : [];
+    const prevPlayers = prevPlayersRef.current;
+
+    if (Platform.OS !== 'web'
+        && prevPlayers.length > 0
+        && newPlayers.length > prevPlayers.length
+    ) {
+      const joined = newPlayers.find(p => !prevPlayers.some(old => old.userId === p.userId));
+      if (joined) sendUserJoinedNotification(joined.username);
+    }
+
+    prevPlayersRef.current = newPlayers;
+    setPlayers(newPlayers);
   });
+}, [roomId]);
 
-  // Listeners Firebase
+
+  const registerForPushNotifications = async (): Promise<string|undefined> => {
+    if (!Device.isDevice) {
+      Alert.alert('Error', 'Debes usar un dispositivo físico para notificaciones push.');
+      return;
+    }
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    let finalStatus = existing;
+    if (existing !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== 'granted') {
+      Alert.alert('Permiso denegado', 'No se otorgaron permisos para recibir notificaciones.');
+      return;
+    }
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId as string;
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+    return tokenData.data;
+  };
+
+  const sendUserJoinedNotification = async (newUsername: string) => {
+    const token = await registerForPushNotifications();
+    if (!token) return;
+    const message = {
+      to: token,
+      sound: 'default',
+      title: 'Nuevo jugador',
+      body: `${newUsername} se ha unido a la sala`,
+      data: { type: 'player_joined', username: newUsername },
+    };
+    await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Accept-Encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(message),
+    });
+  };
+
+  const manifest = Constants.manifest ?? (Constants as any).expoConfig;
+  const apiKey = manifest?.extra?.GEMINI_API_KEY as string;
+  if (!apiKey) console.warn('⚠️ No se encontró GEMINI_API_KEY en app.json → extra');
+
   useEffect(() => {
     if (!roomId) return;
     const pRef  = dbRef(db, `rooms/${roomId}/players`);
@@ -112,12 +195,7 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
     });
   }, [roomId]);
 
-  // Crear sala
-  const createRoom = async (opts: {
-    totalRounds: number;
-    timeLimit: number;
-    category: string;
-  }) => {
+  const createRoom = async (opts: { totalRounds: number; timeLimit: number; category: string }) => {
     const id = uuidv4();
     setRoomId(id);
     _setTotalRounds(opts.totalRounds);
@@ -132,7 +210,6 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
     });
   };
 
-  // Unirse sin info adicional
   const joinRoom = async () => {
     if (!roomId) return;
     await set(dbRef(db, `rooms/${roomId}/players/${userId}`), {
@@ -140,7 +217,6 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
     });
   };
 
-  // Unirse con nombre y foto
   const joinRoomWithInfo = async (
     rCode: string, uId: string, uName: string, uPhoto: string
   ) => {
@@ -153,7 +229,6 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
     });
   };
 
-  // Retos estáticos (fallback)
   const STATIC: Record<string,string[]> = {
     'Family friendly': ['Selfie con tu bebida favorita','Foto de un abrazo de grupo','Captura a alguien bailando'],
     'Plan tranqui':     ['Foto relajada en el sofá','Toma una foto con mascota','Captura un libro que estés leyendo'],
@@ -161,26 +236,27 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
     'Pongámonos picantes...':['Selfie con gesto coqueto','Foto con algún accesorio rojo','Captura mirada intensa']
   };
 
-  // Iniciar ronda con IA + limpieza
   const startRound = async () => {
     if (!roomId) return;
-
-    // Generar prompt y pedir a Gemini
-    const prompt = `Crea un reto de fotografía para la categoría "${category}" en la ronda ${currentRound}.`;
+    const prompt = `Crea un reto de fotografía para la categoría "${category}" , indica **únicamente en una sola frase** cómo debe ser la fotografía.`;
     let retoIA = '';
     try {
-      const res = await openai.responses.create({
-        model: "gpt-4.1",
-        input: prompt,
-      });
-      retoIA = res.output_text.trim();
-    } catch (e) {
-      console.warn('Error IA, usando reto estático:', e);
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+        }
+      );
+      const data = await res.json();
+      retoIA = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+              || STATIC[category]?.[0]
+              || 'Reto por defecto';
+    } catch {
       const list = STATIC[category] || STATIC['Family friendly'];
       retoIA = list[Math.floor(Math.random()*list.length)];
     }
-
-    // Guardar reto y limpiar datos
     await set(dbRef(db, `rooms/${roomId}/challenge`), retoIA);
     await set(dbRef(db, `rooms/${roomId}/round`), currentRound + 1);
     await set(dbRef(db, `rooms/${roomId}/photos`), {});
@@ -188,7 +264,6 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
     await set(dbRef(db, `rooms/${roomId}/scores`), {});
   };
 
-  // Subir foto Base64
   const submitPhoto = async (base64: string) => {
     if (!roomId) return;
     const res  = await fetch(base64);
@@ -202,10 +277,9 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
     });
   };
 
-  // Subir foto desde URI
   const submitPhotoFromUri = async (uri: string) => {
     if (!roomId) return;
-    const b64     = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+    const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
     const dataUrl = `data:image/jpeg;base64,${b64}`;
     const path    = `photos/${roomId}/${userId}.jpg`;
     const ref     = storageRef(storage, path);
@@ -217,7 +291,6 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
     return url;
   };
 
-  // Votar y recalcular puntuaciones
   const submitVote = async (targetUserId: string) => {
     if (!roomId) return;
     await set(dbRef(db, `rooms/${roomId}/votes/${userId}`), {
@@ -254,7 +327,9 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
       startRound,
       submitPhoto,
       submitPhotoFromUri,
-      submitVote
+      submitVote,
+      registerForPushNotifications,
+      sendUserJoinedNotification
     }}>
       {children}
     </RoomContext.Provider>
