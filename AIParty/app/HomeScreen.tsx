@@ -30,6 +30,12 @@ export default function HomeScreen({ navigation }: Props) {
       >
         <Text style={styles.buttonText}>Unirse a sala</Text>
       </TouchableOpacity>
+
+    <TouchableOpacity
+    style={[styles.button, { backgroundColor: '#AE00FF' }]}
+        onPress={() => navigation.navigate('Login')}>
+      <Text style={styles.buttonText}>Iniciar sesión</Text>
+      </TouchableOpacity>
     </View>
   );
 }

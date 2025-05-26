@@ -2,12 +2,15 @@ import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert
 } from 'react-native';
+import * as Notifications from 'expo-notifications';
+import { useAuth } from '../context/AuthContext';
 import { Picker } from '@react-native-picker/picker';
 import { useNavigation } from '@react-navigation/native';
 import { useRoom } from '../context/RoomContext';
 
 export default function CreateLobby() {
   const nav = useNavigation<any>();
+  const { user } = useAuth(); 
   const {
     createRoom,
     joinRoom,
@@ -20,6 +23,18 @@ export default function CreateLobby() {
   const [cat,    setCat]    = useState('Family friendly');
 
   const handleCreate = async () => {
+// ← RESTRICCIÓN: si es picante y no hay user logueado, notificar y cortar
+   if (cat === 'Pongámonos picantes...' && !user) {
+     await Notifications.scheduleNotificationAsync({
+       content: {
+         title: 'Acceso restringido',
+         body: 'Debes iniciar sesión para usar la categoría "Pongámonos picantes..."'
+       },
+       trigger: null
+     });
+     return;
+   }
+
     if (!rounds.trim() || !time.trim()) {
       return Alert.alert('Debes poner número de rondas y tiempo');
     }

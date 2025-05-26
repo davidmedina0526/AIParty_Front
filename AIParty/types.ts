@@ -1,5 +1,6 @@
 // types.ts
 export type RootStackParamList = {
+    Login: undefined;
     Home: undefined;
     CreateLobby: undefined;
     JoinLobby: { prefillCode?: string };
