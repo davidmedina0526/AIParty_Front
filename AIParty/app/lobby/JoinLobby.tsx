@@ -1,3 +1,5 @@
+// app/lobby/JoinLobby.tsx
+
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -8,31 +10,52 @@ import {
   Alert,
   Image
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { v4 as uuidv4 } from 'uuid';
 import { useRoom } from '../../app/context/RoomContext';
-import { get, dbRef, db, storage, storageRef, uploadBytes, getDownloadURL } from '../../src/services/firebase';
+import {
+  get,
+  dbRef,
+  db,
+  storage,
+  storageRef,
+  uploadBytes,
+  getDownloadURL
+} from '../../src/services/firebase';
 
 export default function JoinLobby() {
   const nav = useNavigation<any>();
+  const route = useRoute<any>();
+  const prefill = route.params?.prefillCode ?? '';
+
   const { joinRoomWithInfo } = useRoom();
 
-  const [code, setCode]       = useState('');
-  const [name, setName]       = useState('');
-  const [imageUri, setImageUri] = useState<string|null>(null);
+  // Inicializar código con el valor escaneado (prefill)
+  const [code, setCode] = useState(prefill.toUpperCase());
+  const [name, setName] = useState('');
+  const [imageUri, setImageUri] = useState<string | null>(null);
 
+  // Sincronizar si el parámetro prefill cambia
+  useEffect(() => {
+    setCode(prefill.toUpperCase());
+  }, [prefill]);
+
+  // Pedir permisos de galería y cámara
   useEffect(() => {
     (async () => {
       const lib = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (lib.status !== 'granted')
+      if (lib.status !== 'granted') {
         Alert.alert('Permiso', 'Se necesita acceso a la galería');
+      }
       const cam = await ImagePicker.requestCameraPermissionsAsync();
-      if (cam.status !== 'granted')
+      if (cam.status !== 'granted') {
         Alert.alert('Permiso', 'Se necesita acceso a la cámara');
+      }
     })();
   }, []);
 
+  // Abrir selector de imágenes
   const pickImage = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -42,7 +65,8 @@ export default function JoinLobby() {
       setImageUri(res.assets[0].uri);
     }
   };
-  
+
+  // Abrir cámara para tomar foto
   const takePhoto = async () => {
     const res = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -53,19 +77,24 @@ export default function JoinLobby() {
     }
   };
 
+  // Lógica de unión a sala
   const handleJoin = async () => {
     const roomCode = code.trim().toLowerCase();
-    if (!roomCode) return Alert.alert('Error', 'Ingresa el código de sala');
-    if (!name.trim()) return Alert.alert('Error', 'Ingresa tu nombre');
-  
+    if (!roomCode) {
+      return Alert.alert('Error', 'Ingresa el código de sala');
+    }
+    if (!name.trim()) {
+      return Alert.alert('Error', 'Ingresa tu nombre');
+    }
+
     let fullRoomId: string | null = null;
     try {
-      // Trae todas las rooms
+      // Trae todas las salas
       const roomsSnap = await get(dbRef(db, 'rooms'));
       if (!roomsSnap.exists()) {
         return Alert.alert('Error', 'No hay salas disponibles');
       }
-  
+
       // Busca la sala cuyo ID comience por roomCode
       roomsSnap.forEach(childSnap => {
         const key = childSnap.key || '';
@@ -74,6 +103,7 @@ export default function JoinLobby() {
           return true; // rompe el forEach
         }
       });
+
       if (!fullRoomId) {
         return Alert.alert('Error', 'Sala no encontrada');
       }
@@ -81,8 +111,8 @@ export default function JoinLobby() {
       console.error(e);
       return Alert.alert('Error', 'No se pudo verificar la sala');
     }
-  
-    // Generar ID y avatar (igual que tenías)
+
+    // Generar ID de usuario y subir avatar si hay
     const uId = uuidv4();
     let avatarUrl = '';
     if (imageUri) {
@@ -90,48 +120,89 @@ export default function JoinLobby() {
         const resp = await fetch(imageUri);
         const blob = await resp.blob();
         const path = `avatars/${fullRoomId}/${uId}.jpg`;
-        const ref  = storageRef(storage, path);
+        const ref = storageRef(storage, path);
         await uploadBytes(ref, blob);
         avatarUrl = await getDownloadURL(ref);
       } catch {
         Alert.alert('Aviso', 'No se pudo subir la foto. Continúas sin avatar.');
       }
     }
-  
-    // Ya con el ID completo, te unes:
+
+    // Unirse con la información completa
     await joinRoomWithInfo(fullRoomId, uId, name.trim(), avatarUrl);
-  
-    // Navega a PlayerLobby
+
+    // Redirigir al lobby de jugador
     nav.replace('PlayerLobby');
-  };  
+  };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Unirse a sala</Text>
 
       <Text style={styles.label}>Código</Text>
-      <TextInput style={styles.input} value={code} onChangeText={setCode} placeholder="ABC123" autoCapitalize="characters"/>
+      <TextInput
+        style={styles.input}
+        value={code}
+        onChangeText={setCode}
+        placeholder="ABC123"
+        autoCapitalize="characters"
+      />
 
       <Text style={styles.label}>Nombre</Text>
-      <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Tu nombre"/>
+      <TextInput
+        style={styles.input}
+        value={name}
+        onChangeText={setName}
+        placeholder="Tu nombre"
+      />
 
       <Text style={styles.label}>Foto (opcional)</Text>
       <View style={styles.photoActions}>
-        <TouchableOpacity style={[styles.photoButton,{backgroundColor:'#009DFF'}]} onPress={pickImage}>
+        <TouchableOpacity
+          style={[styles.photoButton, { backgroundColor: '#009DFF' }]}
+          onPress={pickImage}
+        >
           <Text style={styles.photoButtonText}>Galería</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.photoButton,{backgroundColor:'#FF00C8'}]} onPress={takePhoto}>
+        <TouchableOpacity
+          style={[styles.photoButton, { backgroundColor: '#FF00C8' }]}
+          onPress={takePhoto}
+        >
           <Text style={styles.photoButtonText}>Cámara</Text>
         </TouchableOpacity>
       </View>
-      {imageUri && <Image source={{uri:imageUri}} style={styles.preview}/>}
+      {imageUri && (
+        <Image source={{ uri: imageUri }} style={styles.preview} />
+      )}
 
       <View style={styles.actions}>
-        <TouchableOpacity style={[styles.button,{backgroundColor:'#666'}]} onPress={()=>nav.goBack()}>
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: '#666' }]}
+          onPress={() => nav.goBack()}
+        >
           <Text style={styles.buttonText}>Atrás</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.button,{backgroundColor:'#0A0'}]} onPress={handleJoin}>
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: '#0A0' }]}
+          onPress={handleJoin}
+        >
           <Text style={styles.buttonText}>Entrar</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.row}>
+        <TextInput
+          style={[styles.input, { flex: 0.7 }]}
+          value={code}
+          onChangeText={setCode}
+          placeholder="ABC123"
+          autoCapitalize="characters"
+        />
+        <TouchableOpacity
+          style={[styles.qrButton, { flex: 0.3 }]}
+          onPress={() => nav.navigate('QRScanner')}
+        >
+          <Text style={styles.qrButtonText}>Escanear QR</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -139,15 +210,89 @@ export default function JoinLobby() {
 }
 
 const styles = StyleSheet.create({
-  container:    { flex:1, backgroundColor:'#261683', padding:20 },
-  title:        { fontFamily:'Nerko One', fontSize:50, color:'#FFF', textAlign:'center', marginTop:60, marginBottom:20 },
-  label:        { fontFamily:'Nerko One', fontSize:25, color:'#FFF', marginTop:12 },
-  input:        { backgroundColor:'#FFF', borderRadius:5, height:53, paddingHorizontal:10, marginTop:6, fontSize:25, fontFamily:'Nerko One', color:'#000' },
-  photoActions: { flexDirection:'row', justifyContent:'space-between', marginTop:6 },
-  photoButton:  { flex:0.48, paddingVertical:10, borderRadius:6, alignItems:'center' },
-  photoButtonText:{ fontSize:18, color:'#FFF', fontFamily:'Nerko One' },
-  preview:      { width:80, height:80, borderRadius:40, marginTop:12, alignSelf:'center' },
-  actions:      { flexDirection:'row', justifyContent:'space-between', marginTop:40 },
-  button:       { flex:0.48, paddingVertical:14, borderRadius:8, alignItems:'center' },
-  buttonText:   { fontFamily:'Nerko One', fontSize:25, color:'#FFF' },
+  container: {
+    flex: 1,
+    backgroundColor: '#261683',
+    padding: 20
+  },
+  title: {
+    fontFamily: 'Nerko One',
+    fontSize: 50,
+    color: '#FFF',
+    textAlign: 'center',
+    marginTop: 60,
+    marginBottom: 20
+  },
+  label: {
+    fontFamily: 'Nerko One',
+    fontSize: 25,
+    color: '#FFF',
+    marginTop: 12
+  },
+  input: {
+    backgroundColor: '#FFF',
+    borderRadius: 5,
+    height: 53,
+    paddingHorizontal: 10,
+    marginTop: 6,
+    fontSize: 25,
+    fontFamily: 'Nerko One',
+    color: '#000'
+  },
+  photoActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 6
+  },
+  photoButton: {
+    flex: 0.48,
+    paddingVertical: 10,
+    borderRadius: 6,
+    alignItems: 'center'
+  },
+  photoButtonText: {
+    fontSize: 18,
+    color: '#FFF',
+    fontFamily: 'Nerko One'
+  },
+  preview: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    marginTop: 12,
+    alignSelf: 'center'
+  },
+  actions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 40
+  },
+  button: {
+    flex: 0.48,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center'
+  },
+  buttonText: {
+    fontFamily: 'Nerko One',
+    fontSize: 25,
+    color: '#FFF'
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  qrButton: {
+    marginLeft: 10,
+    backgroundColor: '#FFAA00',
+    paddingVertical: 14,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  qrButtonText: {
+    fontFamily: 'Nerko One',
+    fontSize: 18,
+    color: '#FFF',
+  },
 });

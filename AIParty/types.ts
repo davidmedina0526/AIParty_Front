@@ -2,7 +2,7 @@
 export type RootStackParamList = {
     Home: undefined;
     CreateLobby: undefined;
-    JoinLobby: undefined;
+    JoinLobby: { prefillCode?: string };
     HostLobby: undefined;
     QRScanner: undefined;
     JoinedLobby: undefined;
