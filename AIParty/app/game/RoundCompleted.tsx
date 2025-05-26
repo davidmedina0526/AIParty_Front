@@ -50,7 +50,7 @@ export default function RoundCompleted() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Ronda {currentRound}</Text>
+      <Text style={styles.title}>Ronda {currentRound-1}</Text>
       <View style={styles.timer}>
         <Text style={styles.time}>{seconds >= 0 ? seconds : 0}</Text>
       </View>

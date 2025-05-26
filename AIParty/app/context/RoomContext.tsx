@@ -93,7 +93,7 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
   const [totalRounds, _setTotalRounds]   = useState(4);
   const [timeLimit, _setTimeLimit]       = useState(30);
   const [roundStartTime, _setRoundStart] = useState<number>(0);
-  const [category, _setCategory]       = useState('Family friendly');
+  const [category, _setCategory]         = useState('Family friendly');
 
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener     = useRef<Notifications.Subscription | null>(null);
@@ -112,26 +112,24 @@ const RoomProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
 
   const prevPlayersRef = useRef<Player[]>([]);
 
-useEffect(() => {
-  if (!roomId) return;
-  const pRef = dbRef(db, `rooms/${roomId}/players`);
-  return onValue(pRef, snap => {
-    const newPlayers = snap.val() ? Object.values(snap.val()) as Player[] : [];
-    const prevPlayers = prevPlayersRef.current;
-
-    if (Platform.OS !== 'web'
-        && prevPlayers.length > 0
-        && newPlayers.length > prevPlayers.length
-    ) {
-      const joined = newPlayers.find(p => !prevPlayers.some(old => old.userId === p.userId));
-      if (joined) sendUserJoinedNotification(joined.username);
-    }
-
-    prevPlayersRef.current = newPlayers;
-    setPlayers(newPlayers);
-  });
-}, [roomId]);
-
+  useEffect(() => {
+    if (!roomId) return;
+    const pRef = dbRef(db, `rooms/${roomId}/players`);
+    return onValue(pRef, snap => {
+      const newPlayers = snap.val() ? Object.values(snap.val()) as Player[] : [];
+      const prevPlayers = prevPlayersRef.current;
+      if (
+        Platform.OS !== 'web' &&
+        prevPlayers.length > 0 &&
+        newPlayers.length > prevPlayers.length
+      ) {
+        const joined = newPlayers.find(p => !prevPlayers.some(old => old.userId === p.userId));
+        if (joined) sendUserJoinedNotification(joined.username);
+      }
+      prevPlayersRef.current = newPlayers;
+      setPlayers(newPlayers);
+    });
+  }, [roomId]);
 
   const registerForPushNotifications = async (): Promise<string|undefined> => {
     if (!Device.isDevice) {
@@ -180,16 +178,13 @@ useEffect(() => {
 
   useEffect(() => {
     if (!roomId) return;
-    const pRef  = dbRef(db, `rooms/${roomId}/players`);
-    const phRef = dbRef(db, `rooms/${roomId}/photos`);
-    const vRef  = dbRef(db, `rooms/${roomId}/votes`);
-    const sRef  = dbRef(db, `rooms/${roomId}/scores`);
-    const cRef  = dbRef(db, `rooms/${roomId}/challenge`);
-    const rRef  = dbRef(db, `rooms/${roomId}/round`);
-
-    const trRef = dbRef(db, `rooms/${roomId}/totalRounds`);
-    const tlRef = dbRef(db, `rooms/${roomId}/timeLimit`);
-    const rsRef = dbRef(db, `rooms/${roomId}/roundStartTime`);
+    const pRef   = dbRef(db, `rooms/${roomId}/players`);
+    const phRef  = dbRef(db, `rooms/${roomId}/photos`);
+    const vRef   = dbRef(db, `rooms/${roomId}/votes`);
+    const sRef   = dbRef(db, `rooms/${roomId}/scores`);
+    const cRef   = dbRef(db, `rooms/${roomId}/challenge`);
+    const rRef   = dbRef(db, `rooms/${roomId}/round`);
+    const rsRef  = dbRef(db, `rooms/${roomId}/roundStartTime`);
 
     onValue(pRef,  snap => setPlayers(snap.val() ? Object.values(snap.val()) : []));
     onValue(phRef, snap => setPhotos  (snap.val() ? Object.values(snap.val()) : []));
@@ -197,31 +192,52 @@ useEffect(() => {
     onValue(sRef,  snap => setScores(Object.values(snap.val() || {})));
     onValue(cRef,  snap => setChallenge(snap.val() || ''));
     onValue(rRef,  snap => {
-      const v = snap.val();
-      if (v !== null) setCurrentRound(v);
+      const v = snap.val(); if (v !== null) setCurrentRound(v);
     });
-
-    onValue(trRef, snap => { const v = snap.val(); if (v !== null) _setTotalRounds(v); });
-    onValue(tlRef, snap => { const v = snap.val(); if (v !== null) _setTimeLimit(v); });
     onValue(rsRef, snap => {
-      const v = snap.val();
-      if (v !== null) _setRoundStart(v);
+      const t = snap.val(); if (t !== null) _setRoundStart(t);
     });
   }, [roomId]);
 
   const createRoom = async (opts: { totalRounds: number; timeLimit: number; category: string }) => {
     const id = uuidv4();
+    const now = Date.now();
+
     setRoomId(id);
     _setTotalRounds(opts.totalRounds);
     _setTimeLimit(opts.timeLimit);
     _setCategory(opts.category);
+    _setRoundStart(now);
+
+    // crea la sala con roundStartTime y sin reto aún
     await set(dbRef(db, `rooms/${id}`), {
       players: {}, photos: {}, votes: {}, scores: {},
-      challenge:'', round:1,
+      challenge: '', round: 1,
       totalRounds: opts.totalRounds,
       timeLimit: opts.timeLimit,
-      category: opts.category
+      category: opts.category,
+      roundStartTime: now
     });
+
+    // genera y guarda el reto inicial (primera ronda) inmediatamente
+    const prompt = `Crea un reto de fotografía para la categoría "${opts.category}" , indica **únicamente en una sola frase** cómo debe ser la fotografía.`;
+    let retoIA = '';
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+        }
+      );
+      const data = await res.json();
+      retoIA = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+              || 'Reto por defecto';
+    } catch {
+      retoIA = 'Reto por defecto';
+    }
+    await set(dbRef(db, `rooms/${id}/challenge`), retoIA);
   };
 
   const joinRoom = async () => {
@@ -255,7 +271,8 @@ useEffect(() => {
     const ts = Date.now();
     _setRoundStart(ts);
     await set(dbRef(db, `rooms/${roomId}/roundStartTime`), ts);
-    const prompt = `Crea un reto de fotografía para la categoría "${category}" , indica **únicamente en una sola frase** cómo debe ser la fotografía.`;
+
+    const prompt = `Crea un reto de fotografía para la categoría "${category}" , indica **únicamente en una sola frase** cómo debe ser la fotografía, estilo "toma una foto haciendo" y algo relacionado a la categoria ya, recuerda que es un juego de fotos con amigos para divertirse`;
     let retoIA = '';
     try {
       const res = await fetch(
@@ -274,16 +291,18 @@ useEffect(() => {
       const list = STATIC[category] || STATIC['Family friendly'];
       retoIA = list[Math.floor(Math.random()*list.length)];
     }
+
     await set(dbRef(db, `rooms/${roomId}/challenge`), retoIA);
+    await set(dbRef(db, `rooms/${roomId}/round`), currentRound + 1);
     await set(dbRef(db, `rooms/${roomId}/photos`), {});
     await set(dbRef(db, `rooms/${roomId}/votes`), {});
     await set(dbRef(db, `rooms/${roomId}/scores`), {});
   };
 
   const advanceRound = async () => {
-   if (!roomId) return;
-     await set(dbRef(db, `rooms/${roomId}/round`), currentRound + 1);
-   };
+    if (!roomId) return;
+    await set(dbRef(db, `rooms/${roomId}/round`), currentRound + 1);
+  };
 
   const submitPhoto = async (base64: string) => {
     if (!roomId) return;
@@ -298,7 +317,6 @@ useEffect(() => {
     });
   };
 
-  // Nueva versión: descarga el URI como Blob y lo sube con uploadBytes
   const submitPhotoFromUri = async (uri: string) => {
     if (!roomId) return;
     try {
@@ -328,7 +346,6 @@ useEffect(() => {
       throw e;
     }
   };
- 
 
   const submitVote = async (targetUserId: string) => {
     if (!roomId) return;
@@ -360,16 +377,10 @@ useEffect(() => {
       challenge,
       currentRound, setCurrentRound,
       totalRounds, timeLimit, roundStartTime, category, setCategory: _setCategory,
-      createRoom,
-      joinRoom,
-      joinRoomWithInfo,
-      startRound,
-      advanceRound,
-      submitPhoto,
-      submitPhotoFromUri,
-      submitVote,
-      registerForPushNotifications,
-      sendUserJoinedNotification
+      createRoom, joinRoom, joinRoomWithInfo,
+      startRound, advanceRound,
+      submitPhoto, submitPhotoFromUri, submitVote,
+      registerForPushNotifications, sendUserJoinedNotification
     }}>
       {children}
     </RoomContext.Provider>
